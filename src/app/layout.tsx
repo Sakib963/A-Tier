@@ -26,7 +26,7 @@ export default function RootLayout({
     <html lang="en" className={notoBengali.variable}>
       <body className="flex min-h-screen flex-col bg-cream text-turf-950 antialiased">
         <header className="border-b border-turf-900/10">
-          <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-4">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
             <Wordmark />
             <p className="hidden text-sm text-turf-700/80 sm:block">
               {BRAND.taglines[0]}
@@ -34,12 +34,12 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-8 sm:py-12">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10">
           {children}
         </main>
 
         <footer className="border-t border-turf-900/10 bg-white/50">
-          <div className="mx-auto max-w-4xl px-5 py-6 text-center text-xs text-turf-700/70">
+          <div className="mx-auto max-w-6xl px-4 py-6 text-center text-xs text-turf-700/70 sm:px-6">
             {BRAND.footer}
           </div>
         </footer>

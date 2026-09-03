@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Empty, SectionHead } from './TheTable';
 import { RECENT } from '@/lib/copy';
+import { Blob, HardHat, Zigzag } from './Doodles';
 import { Taka } from './Taka';
 import { formatMatchDate, taka } from '@/lib/format';
 import type { MatchBreakdown } from '@/lib/data';
@@ -13,13 +14,21 @@ import type { MatchBreakdown } from '@/lib/data';
  */
 export function RecentMatches({ matches }: { matches: MatchBreakdown[] }) {
   return (
-    <section>
-      <SectionHead heading={RECENT.heading} />
+    <section className="relative">
+      <Blob
+        variant={3}
+        className="-right-20 -bottom-10 -z-10 h-64 w-64 fill-turf-500/15"
+      />
+
+      <SectionHead
+        heading={RECENT.heading}
+        icon={<HardHat className="h-6 w-6 text-hardhat" />}
+      />
 
       {matches.length === 0 ? (
         <Empty>{RECENT.empty}</Empty>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2">
+        <ul className="grid gap-5 sm:grid-cols-2">
           {matches.map((m) => (
             <li key={m.match.id}>
               <MatchCard breakdown={m} />
@@ -38,8 +47,9 @@ function MatchCard({ breakdown }: { breakdown: MatchBreakdown }) {
   return (
     <Link
       href={`/matches/${match.id}`}
-      className="block h-full rounded-2xl border border-turf-900/10 bg-white p-5 transition hover:border-turf-700/40 hover:shadow-md"
+      className="group relative block h-full overflow-hidden rounded-3xl border-2 border-turf-900/10 bg-white p-5 transition hover:-translate-y-1 hover:border-turf-500/50 hover:shadow-xl"
     >
+      <Zigzag className="-top-1 left-0 h-3 w-full stroke-hardhat/50" />
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="font-semibold text-turf-950">{match.turf_name}</h3>
         <span className="shrink-0 text-xs text-turf-700/70">

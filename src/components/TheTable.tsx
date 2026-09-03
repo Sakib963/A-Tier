@@ -1,4 +1,5 @@
 import { TABLE, rotate } from '@/lib/copy';
+import { Blob, Dots, Football, Wrench } from './Doodles';
 import { Taka } from './Taka';
 import { TIER_LABEL } from '@/lib/format';
 import type { PlayerBalance } from '@/lib/types';
@@ -12,13 +13,26 @@ import type { PlayerBalance } from '@/lib/types';
  */
 export function TheTable({ balances }: { balances: PlayerBalance[] }) {
   return (
-    <section>
-      <SectionHead heading={TABLE.heading} sub={TABLE.sub} />
+    <section className="relative">
+      <Blob
+        variant={1}
+        className="-top-10 -left-16 -z-10 h-56 w-56 fill-hardhat/20"
+      />
+      <Dots
+        className="-top-4 right-0 -z-10 h-32 w-32 fill-turf-500/25"
+        seed={5}
+      />
+
+      <SectionHead
+        heading={TABLE.heading}
+        sub={TABLE.sub}
+        icon={<Football className="h-6 w-6 text-turf-500" />}
+      />
 
       {balances.length === 0 ? (
         <Empty>{TABLE.empty}</Empty>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-turf-900/10 bg-white">
+        <div className="overflow-hidden rounded-3xl border-2 border-turf-900/10 bg-white shadow-lg">
           <table className="w-full">
             <caption className="sr-only">
               Player balances. Payments in minus match costs out.
@@ -92,24 +106,30 @@ function Row({ row, rank }: { row: PlayerBalance; rank: number }) {
 export function SectionHead({
   heading,
   sub,
+  icon,
 }: {
   heading: string;
   sub?: string;
+  icon?: React.ReactNode;
 }) {
   return (
-    <div className="mb-4">
-      <h2 className="font-display text-2xl tracking-tight text-turf-950">
-        {heading}
-      </h2>
-      {sub ? <p className="mt-1 text-sm text-turf-700/80">{sub}</p> : null}
+    <div className="mb-5">
+      <div className="flex items-center gap-2.5">
+        {icon}
+        <h2 className="font-display text-3xl tracking-tight text-turf-950">
+          {heading}
+        </h2>
+      </div>
+      {sub ? <p className="mt-1.5 text-sm text-turf-700/80">{sub}</p> : null}
     </div>
   );
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-2xl border-2 border-dashed border-turf-700/25 bg-white/60 px-6 py-10 text-center text-turf-900">
-      {children}
-    </p>
+    <div className="rounded-3xl border-2 border-dashed border-turf-700/25 bg-white/70 px-6 py-12 text-center">
+      <Wrench className="mx-auto h-9 w-9 text-hardhat" />
+      <p className="mt-3 text-turf-900">{children}</p>
+    </div>
   );
 }
