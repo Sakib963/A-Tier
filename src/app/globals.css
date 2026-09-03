@@ -32,3 +32,17 @@ body {
 .tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* The taka sign needs a font with Bengali coverage. Plain system stacks often
+   render it as a fallback box, which would make a money figure harder to read.
+   Keep the sign a touch smaller and lighter than the digits so the NUMBER is
+   what the eye lands on, with a small gap so the two never collide. */
+.taka-sign {
+  font-family:
+    var(--font-bengali), 'Noto Sans Bengali', 'Mukti', 'Lohit Bengali',
+    'FreeSans', system-ui, sans-serif;
+  font-size: 0.82em;
+  font-weight: 600;
+  margin-inline-end: 0.12em;
+  opacity: 0.75;
+}
