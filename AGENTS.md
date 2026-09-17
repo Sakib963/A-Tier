@@ -12,141 +12,140 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 *The football fund that finally adds up.*
 
-A transparent money + match manager for a weekly turf football crew (~25
-players). Personal side project, not an office tool.
+The public website for the Celloscope Football Club crew (~36 players, weekly
+turf football). Personal side project, not an office tool. `README.md` has the
+full architecture, setup, caching strategy, and deploy steps; read it first.
 
-## Specs are the source of truth
+## Architecture in one breath
 
-Four docs at the repo root. Read before changing behavior:
-
-1. `A-Tier-KICKOFF-PROMPT.md` - the directive and prime directives.
-2. `A-Tier-requirements-v0.2.md` - **behavioral source of truth.** What the app
-   does and why, plus the resolved decisions list (section 12).
-3. `A-Tier-BUILD-SPEC.md` - stack, schema, the money-math contract (section 4),
-   page map (section 7), build order (section 8).
-4. `A-Tier-VOICE-AND-COPY.md` - voice guide and ready-made copy per surface.
-
-If product behavior is ambiguous, **ask; do not invent it.** Small technical
-choices are fine to make alone, noted briefly.
+The club Google Sheet is the single source of truth. `lib/club-sheet.ts` reads
+it with a read-only service account and reshapes it into `ClubData`.
+`app/api/club-data/route.ts` serves that as cached JSON. `public/a-tier.html` is
+a static page, served at `/` by a rewrite in `next.config.ts`, that fetches the
+JSON and renders it. No database, no admin UI, no writes, no auth.
 
 ## Non-negotiables
 
-1. **It is a website, not an admin portal.** The public landing page shows
-   everything: next match, the standings table of balances, recent match cost
-   breakdowns, the poll. No sidebar shell, no data-grid feel. Club-website
-   energy. Admin actions live on plain, focused, one-job pages behind a
-   passcode, reachable from a simple text nav that only appears when logged in.
-2. **The money math is the product.** `computeSplit` is a pure, unit-tested
-   function. Tests stay green; UI never gets built on unverified math.
-3. **The RSVP poll is advisory and never bills anyone.** It plans headcount and
-   drives the keep-or-cancel call at the 4-day mark. Only admin-finalized
-   actual attendance is charged. Voted-no-but-played pays; voted-yes-but-skipped
-   does not; did-not-vote-but-played pays.
-4. **History is immutable.** Finalizing freezes each attendee's
-   `amount_charged` and the match's `per_share_cost`. Later fee or tier edits
-   must never retro-alter a past match.
-5. **Every surface carries the Atiar voice**, from the first render. Not a final
-   polish pass.
+1. **The sheet is the source of truth, and the app is read-only.** Admins edit
+   the sheet; players vote on its Current Match tab (the Vote buttons open
+   `SHEET_URL`). Never add a database, a write path, or a second copy of the
+   data. Money math (deposits, spend, balances) is done in the sheet; the app
+   only sums player rows for the wallet totals.
+2. **The sheet layout is fixed. Do not guess.** If parsing looks off (a tab not
+   found, a header not matched, numbers that do not add up), report the exact
+   tab and cell instead of inventing a workaround. Columns are matched by
+   header text through the alias lists in `lib/club-sheet.ts`; tabs by name.
+3. **Keep `public/a-tier.html` a static HTML file.** Do not port it to React or
+   split it into components. Do not change its visual design or copy unless
+   asked. Leave `SHEET_URL` alone.
+4. **Only `ClubData` fields leave the server.** The sheet also holds players'
+   phone numbers and emails. Never add contact details to the API response.
+   `reference-and-docs/` holds a local copy of the sheet with that data and is
+   gitignored; keep it out of commits.
+5. **Every surface carries the Atiar voice** (see Voice rules). Loading and
+   error states included.
 
-## The money model
+## Where things live
 
-Share-based, not headcount. Full = 1.0, half = 0.5, free = 0.0 shares.
+| Path | Role |
+|---|---|
+| `lib/club-sheet.ts` | Sheet client, tab parsers, `getClubData()`, the 24-hour cache for past match counts. |
+| `app/api/club-data/route.ts` | `GET /api/club-data`: 5-minute cache, `runtime = "nodejs"` (googleapis needs Node). |
+| `public/a-tier.html` | The whole landing page: inline CSS and one inline script. |
+| `next.config.ts` | The `/` to `/a-tier.html` rewrite. |
+| `A-Tier-*.md` | Original v1 specs for a Supabase build. Superseded for architecture; `A-Tier-VOICE-AND-COPY.md` still applies. |
 
-```
-net       = max(fee - guestCash, 0)
-perShare  = totalShares > 0 ? net / totalShares : 0    // 2 dp
-amount    = round(perShare * shares[tier], 2)
-uncovered = totalShares === 0 && net > 0               // warn, charge nobody
-```
+### Sheet tabs the parser depends on
 
-- Guest cash is subtracted from the fee **first**, so guests lighten everyone's
-  bill.
-- Free players are **excluded from the denominator** on purpose: the rest
-  quietly absorb them. This is intended, not a bug.
-- Tier per match = the player's `default_tier`, but an admin may override it at
-  finalize **for that match only**, without touching the profile.
-- Store 2 dp, display rounded to the nearest taka. Tiny drift between summed
-  charges and the fee is acceptable in v1; do not force reconciliation.
-- Money moves **only at finalize**. Nothing else deducts.
+- `Player Directory & Wallet`: header row with `Player Name`, `Total Deposit`,
+  `Total Spent`, `Available Balance`, `No of Play Match`, `Player Type`,
+  `Player Position`, `Image Link`. Player rows start with a numeric `#`.
+- `Match Schedule & Venue`: `ID`, `Turf Name`, `Match Date`, `Slot Time`,
+  `Match Status` (`Live` / `Upcoming` / `Confirmed` / `Completed`), `Total Rent`,
+  `Advance Paid`, `Due to Turf`.
+- `Current Match`: `Yes (N)` and `No (N)` header labels.
+- One tab per match named `DD-MMM-YYYY` with a `Played (N)` label.
 
-Reference case: fee 3500, no guests, 18 full + 2 half play, shares = 19,
-per-share ~= 184. Full owes 184, half owes 92.
+Each tab is read over `A1:AE100`. Dates come back as serial numbers
+(`UNFORMATTED_VALUE`) and kick-off times are built in Asia/Dhaka (`+06:00`).
 
-## Balances
+### The page script (`public/a-tier.html`)
 
-- Derived, never stored: the `player_balances` view computes
-  `sum(payments) - sum(attendances.amount_charged)`.
-- Carry forward month to month. **Negatives are allowed**, shown in red, and
-  never block anything.
-- Admin records payments received; there is no payment gateway.
+- Top: `SHEET_URL`, `FACTS`, `boot()`, `doneLoading()`, `loadFailed()`, helpers.
+- Runs immediately: vote links, loading skeletons, hero effects, scroll reveal
+  and count-up, back-to-top.
+- `initAll()`: everything that renders sheet data. It runs only after `boot()`
+  has the JSON. Anything new that reads `DATA` goes in here.
+- Each block is wrapped in `guard()` so one failure cannot blank the page.
+- Placeholder values that data will replace carry `data-skel` so they shimmer
+  while loading. Give any new data-bound element the same treatment, and make
+  sure `loadFailed()` leaves it in a sensible state.
 
-## Data & auth architecture
+## Caching (summary; details in README)
 
-- **Reads:** anon key + RLS via `src/lib/supabase/read.ts`. The public site
-  reads every table; transparency is the point.
-- **Writes:** only ever in server routes via the service-role key
-  (`src/lib/supabase/admin.ts`, guarded by `import 'server-only'`). The browser
-  never holds write access. RLS grants anon SELECT only, with no write policies
-  at all.
-- **Players** have no login in v1: they pick their name to cast a vote, hitting
-  a public `POST /api/rsvp`. Trust-based by design (requirements decision 1).
-  Per-player PIN is a later phase.
-- **Admin** is one shared `ADMIN_PASSCODE` setting a signed http-only cookie.
-  Every admin page and write route checks it server-side.
+| Layer | Lifetime |
+|---|---|
+| Past match played counts (`unstable_cache`, key `match-played`) | 24 hours; a `0` is always re-read |
+| Whole `ClubData` (`unstable_cache`, key `club-data`) | 5 minutes |
+| Route output (`export const revalidate = 300`, ISR, prerendered at build) | 5 minutes |
+| CDN (`s-maxage=300, stale-while-revalidate=120`) | 5 minutes |
+| Player photos | Browser, set by the image hosts |
+
+Rules when touching caching:
+
+- Keep the three 5-minute values in `route.ts` in step, and keep `revalidate` a
+  number literal.
+- New sheet reads go inside `getClubData()` so the 5-minute layer covers them.
+  Give data its own longer cache only if it is truly frozen once written.
+- A normal refresh must stay at two Sheets API calls.
+- `unstable_cache` is the pre-Cache-Components API. It is fine here because
+  `cacheComponents` is off; do not mix in `use cache` without migrating
+  everything.
 
 ## Voice rules
 
-Read `A-Tier-VOICE-AND-COPY.md` and pull its strings rather than writing
-generic labels. The hard ones:
+Read `A-Tier-VOICE-AND-COPY.md` before writing any user-facing text. The hard
+ones:
 
 - **NO EM DASHES in any user-facing text.**
-- **Celebrate, never mock.** The joke is always "Atiar bhai is unstoppable,"
-  never that anyone is foolish. Not Atiar, not the staff who play free, not
-  whoever owes money. Everyone is an Atiar of some grade.
-- **Never shame a debtor.** Negative balances get gentle, funny nudges.
+- **Celebrate, never mock.** The joke is always "Atiar bhai is unstoppable",
+  never that anyone is foolish.
+- **Never shame a debtor.** Negative balances are shown in red, gently.
 - **Comedy never obscures a real number.** On any money surface the figure is
-  unmissable and correct; humor decorates the label only. If a line makes an
-  amount harder to read, cut the line.
-- Light Banglish and "bhai" land well. Give reusable strings (loaders, empty
-  states) a small rotation.
-- Tier display skin: `full` = "Full Atiar", `half` = "Semi-Atiar", `free` =
-  "Honorary Atiar" (a title of honor, never a jab). Data and logic stay
-  full/half/free everywhere.
+  unmissable and correct; humor decorates the label only.
+- Light Banglish and "bhai" land well.
 
 ## Conventions
 
-- Money figures use the `.tabular` class (tabular-nums) so digits line up.
-- Currency is taka: display as `৳1,234`, rounded to the nearest taka.
-- Palette lives in `src/app/globals.css` under `@theme` (Tailwind 4 is
-  CSS-first; there is no `tailwind.config.js`).
-- Keep dependencies light. Tailwind for styling, a few headless primitives at
-  most. Do not add a dashboard component kit.
+- Currency is taka via the page's `bdt()` helper: `৳1,234`, rounded, `en-IN`
+  grouping. Money uses the `.money` class (tabular mono digits); negatives get
+  `.neg`, positives `.pos`.
+- Colors come from the CSS variables in `:root` of `a-tier.html`
+  (`--amber`, `--mint`, `--red`, `--ink`, ...). Reuse them; do not add a CSS
+  framework.
+- Keep dependencies light: `next`, `react`, `googleapis`, and nothing else at
+  runtime unless there is a strong reason.
 
 ## Commands
 
 ```bash
 npm run dev        # dev server on :3000
-npm test           # unit tests (the money math)
 npm run typecheck  # tsc --noEmit
-npm run build      # production build
+npm run build      # production build (reads the sheet; needs the env vars)
+npm run start      # serve the production build
 ```
 
-## Build order
+There is no test suite. To verify a change: typecheck, build, check that
+`/api/club-data` returns JSON with `nextMatch`, `totals`, `history`, and
+`players`, and that `/` renders live data (wallet table, squad cards,
+countdown, vote counts) plus the loading and error states.
 
-Follow `A-Tier-BUILD-SPEC.md` section 8 in sequence, committing per step. Do
-not jump ahead.
+## Known hardcoded bits on the page
 
-1. ~~Scaffold + schema + RLS + seed~~ (done)
-2. `computeSplit` + unit tests. Green before moving on.
-3. Public landing, read-only: next match hero, The Table, recent matches.
-4. RSVP voting: name picker + in/out, live poll count.
-5. Admin: login, players CRUD, matches CRUD, finalize screen with live split
-   preview, payments.
-6. Atiar theme pass across all copy, empty states, 404, loaders.
-7. Keepalive + deploy to Vercel.
+These are static copy in `a-tier.html`, not read from the sheet:
 
-## Out of scope for v1
-
-Per-player PIN login, polished email system, group treasury view (collected /
-prepaid-to-turf / pool), stats and history dashboards. Design so they slot in
-later; do not build them now.
+- The kick-off line under the countdown (`#cd-cap`) and "Kick-off 7:30 PM" in
+  the ticker and next-match timeline card.
+- The team chips (managers, round-robin note) in the match card.
+- The per-head rate in history is a constant (`PER_HEAD_DEFAULT = 200` in
+  `lib/club-sheet.ts`).

@@ -19,3 +19,6 @@ next-env.d.ts
 *.pem
 .vercel
 npm-debug.log*
+
+# local copy of the club sheet (has players' phone numbers and emails)
+/reference-and-docs/
